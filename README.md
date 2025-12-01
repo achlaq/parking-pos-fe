@@ -1,6 +1,6 @@
 # 🚀 Project React + Vite
 
-Aplikasi web frontend menggunakan **React** dengan bundler **Vite** untuk aplikasi parkee-pos.
+Aplikasi web frontend menggunakan **React** dengan bundler **Vite** untuk aplikasi parking-pos.
 
 ---
 
@@ -15,8 +15,8 @@ Aplikasi web frontend menggunakan **React** dengan bundler **Vite** untuk aplika
 
 ### 1. Clone Repository
 ```bash
-git clone https://github.com/achlaq/parkee-pos-fe.git
-cd parkee-pos-fe
+git clone https://github.com/achlaq/parking-pos-fe.git
+cd parking-pos-fe
 ```
 
 ### 2. Install Dependencies
