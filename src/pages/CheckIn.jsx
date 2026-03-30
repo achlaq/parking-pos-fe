@@ -1,16 +1,16 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { Card, Flex, Typography, Input, Select, Button, Space, Divider, Form, Modal } from 'antd';
-import { CheckOutlined, FileTextOutlined, ReloadOutlined } from '@ant-design/icons';
+import React, { useEffect, useMemo } from 'react';
+import { Card, Col, Row, Typography, Input, Select, Button, Space, Divider, Form, Modal, Spin, Flex } from 'antd';
+import { FileTextOutlined, ReloadOutlined } from '@ant-design/icons';
 
 import { formatDateIndo } from "../utils/dateFormatter";
-import Clock from "../components/Clock";
 import CameraPlaceholder from "../components/CameraPlaceholder";
 import { sanitizePlate } from "../utils/sanitize";
 
+import { useHotkeys } from "../hooks/useHotkeys";
 import { useCheckIn } from "../hooks/useTicket";
-import { useMemberDetail } from "../hooks/useMember"; 
+import { useMemberDetail } from "../hooks/useMember";
 
-const { Title, Text, Link } = Typography;
+const { Title, Text } = Typography;
 
 function useDebounced(value, delay = 400) {
   const [v, setV] = React.useState(value);
@@ -21,12 +21,16 @@ function useDebounced(value, delay = 400) {
   return v;
 }
 
-const CheckIn = () => {
-  const [form] = Form.useForm(); 
-  const [modal, contextHolder] = Modal.useModal();
+const DetailItem = ({ title, value, loading = false }) => (
+  <Flex justify="space-between" style={{ width: "100%" }}>
+    <Text strong>{title}</Text>
+    {loading ? <Spin size="small" /> : <Text type="secondary">{value}</Text>}
+  </Flex>
+);
 
-  
-  const [plateNumber, setPlateNumber] = useState("");
+const CheckIn = () => {
+  const [form] = Form.useForm();
+  const [modal, contextHolder] = Modal.useModal();
 
   const rawPlate = Form.useWatch("plateNumber", form) || "";
   const normalizedPlate = useMemo(() => sanitizePlate(rawPlate), [rawPlate]);
@@ -42,7 +46,7 @@ const CheckIn = () => {
         modal.error({
           title: "ERROR",
           content: `Kendaraan dengan plat ${data.plateNumber} sudah berada di area.`,
-          maskClosable: false,
+          maskClosable: true,
         });
         return;
       }
@@ -54,117 +58,109 @@ const CheckIn = () => {
     },
     onError: (err) => {
       modal.error({ title: "ERROR", content: err?.message || "Check-in gagal" });
-      form.resetFields();
     },
   });
 
+  const handleReset = () => {
+    form.resetFields();
+  };
+  
+  const handleCheckIn = () => {
+    if (normalizedPlate.length >= 3 && !checkIn.isPending) {
+      form.submit();
+      checkIn.mutate({ plateNumber: normalizedPlate, vehicleType: form.getFieldValue('vehicleType') });
+    }
+  }
 
-
-  useEffect(() => {
-    console.log(member);
-  }, [member]);
+  const handleToggleVehicle = () => {
+    const currentType = form.getFieldValue('vehicleType');
+    form.setFieldsValue({ vehicleType: currentType === 'm' ? 't' : 'm' });
+  };
+  
+  useHotkeys([
+    ['F5', handleReset],
+    ['F8', handleToggleVehicle],
+    ['F10', handleCheckIn],
+  ], [normalizedPlate, checkIn.isPending]);
 
   return (
-    <div 
-      // style={{ padding: 40, backgroundColor: '#f0f2f5', minHeight: '100vh' }}
-    >
+    <>
       {contextHolder}
-      <Form form={form} layout='vertical' initialValues={{vehicleType: "m"}}>
-        <h1>Check In</h1>
-        {/* <Title level={4}>Check-in</Title> */}
-        <Card style={{ padding: '20px 0'} }>
-          <Flex gap={30} style={{ padding: '0 20px' }}>
-            {/* Sisi Kiri: Kamera & Formulir */}
-            <Flex vertical flex={1}>
-              <CameraPlaceholder label="ENTRY CAMERA" height={250} />
-              <Card style={{ width: '100%' }}>
-                <Flex vertical gap={10}>
-                  <Form.Item
-                    name="plateNumber"
-                    label="Plat Nomor"
-                    rules={[{ required: true, message: "Plat wajib diisi" }]}
-                    getValueFromEvent={(e) => sanitizePlate(e.target.value)}
-                  >
-                    <Input placeholder="misal: B5432IT" allowClear />
-                  </Form.Item>
-
-                  <Form.Item 
-                    name="vehicleType" 
-                    label="Jenis Kendaraan (F8)"
-                    rules={[{ required: true, message: "Jenis kendaraan wajib dipilih" }]}>
-                    <Select
-                      showSearch
-                      optionFilterProp="value"
-                      options={[
-                        { value: 'm', label: '(M) MOBIL' },
-                        { value: 't', label: '(T) MOTOR' },
-                      ]}
-                    />
-                  </Form.Item>
-                </Flex>
-              </Card>
-            </Flex>
-
-            {/* Sisi Kanan: Informasi & Tombol */}
-            <Card
-              style={{
-                width: "50%",
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                minHeight: 375,
-              }}
-            >
-              <div>
-                <Text type="secondary"><Clock /></Text>
-                <br />
-                <Text type="secondary">Pintu Masuk</Text>
-                <Divider />
-
-                <Space direction="vertical" size={10} style={{ width: "100%" }}>
-                  <Flex justify="space-between" style={{ width: "100%" }}>
-                    <Text strong>Jenis Parkir</Text>
-                    <Text type="secondary">{memberQuery.isFetching ? "Memuat…" : (isMember ? "Member" : "Conventional")}</Text>
-                  </Flex>
-
-                  <Flex justify="space-between" style={{ width: "100%" }}>
-                    <Text strong>Member Expired</Text>
-                    <Text type="secondary">{memberQuery.isFetching ? "Memuat…" : formatDateIndo(member?.memberExpiredDate)}</Text>
-                  </Flex>
-
-                  <Flex justify="space-between" style={{ width: "100%" }}>
-                    <Text strong>Nama Member</Text>
-                    <Text type="secondary">{memberQuery.isFetching ? "Memuat…" : (member?.name ?? "-")}</Text>
-                  </Flex>
-                </Space>
-
-              </div>
-
-              <Space direction="vertical" style={{ width: '100%', marginTop: "30px" }}>
-                <Button
-                  type="primary" danger
-                  block
-                  disabled={normalizedPlate.length < 3 || checkIn.isPending}
-                  loading={checkIn.isPending}
-                  onClick={() => checkIn.mutate(normalizedPlate)}
-                  style={{
-                    height: 50
-                  }}
+      <Title level={2} style={{ marginBottom: '24px' }}>Check In Kendaraan</Title>
+      <Form form={form} layout='vertical' initialValues={{ vehicleType: "m" }} onFinish={handleCheckIn}>
+        <Row gutter={24}>
+          {/* Sisi Kiri: Input Kendaraan */}
+          <Col xs={24} md={12}>
+            <Card title="Input Kendaraan">
+              <Space direction="vertical" size="large" style={{ width: '100%' }}>
+                <CameraPlaceholder label="ENTRY CAMERA" height={250} />
+                <Form.Item
+                  name="plateNumber"
+                  label="Plat Nomor"
+                  rules={[{ required: true, message: "Plat wajib diisi" }]}
+                  getValueFromEvent={(e) => sanitizePlate(e.target.value)}
+                  style={{ marginBottom: 0 }}
                 >
-                  {<FileTextOutlined />} {checkIn.isPending ? "Memproses..." : "Check-In"}
-                </Button>
-                <Link
-                  style={{ display: 'block', textAlign: 'center', marginTop: 10 }}
-                  icon={<ReloadOutlined />}
+                  <Input placeholder="misal: B1234XYZ" allowClear size="large" autoFocus/>
+                </Form.Item>
+                <Form.Item
+                  name="vehicleType"
+                  label="Jenis Kendaraan (F8)"
+                  rules={[{ required: true, message: "Jenis kendaraan wajib dipilih" }]}
+                  style={{ marginBottom: 0 }}
                 >
-                  Atur Ulang Halaman (F5)
-                </Link>
+                  <Select
+                    size="large"
+                    options={[
+                      { value: 'm', label: '(M) MOBIL' },
+                      { value: 't', label: '(T) MOTOR' },
+                    ]}
+                  />
+                </Form.Item>
               </Space>
             </Card>
-          </Flex>
-        </Card>
+          </Col>
+
+          {/* Sisi Kanan: Informasi & Aksi */}
+          <Col xs={24} md={12}>
+            <Space direction="vertical" size="large" style={{ width: '100%' }}>
+              <Card title="Informasi Parkir">
+                <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+                  <DetailItem title="Jenis Parkir" value={isMember ? "Member" : "Reguler"} loading={memberQuery.isFetching} />
+                  <Divider style={{ margin: '8px 0' }} />
+                  <DetailItem title="Nama Member" value={member?.name ?? "-"} loading={memberQuery.isFetching} />
+                  <Divider style={{ margin: '8px 0' }} />
+                  <DetailItem title="Member Expired" value={formatDateIndo(member?.memberExpiredDate) ?? "-"} loading={memberQuery.isFetching} />
+                </Space>
+              </Card>
+
+              <Card title="Aksi">
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <Button
+                    type="primary"
+                    block
+                    disabled={normalizedPlate.length < 3 || checkIn.isPending}
+                    loading={checkIn.isPending}
+                    onClick={handleCheckIn}
+                    style={{ height: 50 }}
+                    size="large"
+                  >
+                    <FileTextOutlined /> {checkIn.isPending ? "Memproses..." : "Check-In (F10)"}
+                  </Button>
+                  <Button
+                    block
+                    onClick={handleReset}
+                    icon={<ReloadOutlined />}
+                  >
+                    Atur Ulang (F5)
+                  </Button>
+                </Space>
+              </Card>
+            </Space>
+          </Col>
+        </Row>
       </Form>
-    </div>
+    </>
   );
 };
 

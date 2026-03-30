@@ -1,18 +1,17 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { Card, Flex, Typography, Input, Select, Button, Space, Divider, Form, Modal } from 'antd';
-import { ReloadOutlined } from '@ant-design/icons';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { Card, Col, Row, Typography, Input, Select, Button, Space, Divider, Form, Modal, Spin, Descriptions, Statistic } from 'antd';
+import { ReloadOutlined, DollarCircleOutlined } from '@ant-design/icons';
 
 import { formatDateIndo } from "../utils/dateFormatter";
 import { formatDuration } from "../utils/durationFormatter";
-import Clock from "../components/Clock";
 import CameraPlaceholder from "../components/CameraPlaceholder";
 import { sanitizePlate } from "../utils/sanitize";
 
-import { useMemberDetail } from "../hooks/useMember"; 
-import { usePreviewCheckOut, useCheckOut  } from "../hooks/useTicket"; 
+import { useHotkeys } from "../hooks/useHotkeys";
+import { useMemberDetail } from "../hooks/useMember";
+import { usePreviewCheckOut, useCheckOut } from "../hooks/useTicket";
 
-const { Title, Text, Link } = Typography;
-
+const { Title, Text } = Typography;
 
 function useDebounced(value, delay = 400) {
   const [v, setV] = React.useState(value);
@@ -24,11 +23,10 @@ function useDebounced(value, delay = 400) {
 }
 
 const CheckOut = () => {
-  const [form] = Form.useForm(); 
+  const [form] = Form.useForm();
   const [modal, contextHolder] = Modal.useModal();
-  
-  const [plateNumber, setPlateNumber] = useState("");
-  
+  const voucherInputRef = useRef(null);
+
   const rawPlate = Form.useWatch("plateNumber", form) || "";
   const normalizedPlate = useMemo(() => sanitizePlate(rawPlate), [rawPlate]);
   const debouncedPlate = useDebounced(normalizedPlate, 500);
@@ -45,17 +43,8 @@ const CheckOut = () => {
   const previewCheckOut = previewCheckOutQuery.data;
 
   useEffect(() => {
-    if (previewCheckOut?.preview) {
-      form.setFieldsValue({
-        ticketId: previewCheckOut.id
-      });
-    } else if (!previewCheckOut?.preview){
-      form.setFieldsValue({
-        ticketId: null
-      });
-    }
-  }, [previewCheckOut])
-
+    form.setFieldsValue({ ticketId: previewCheckOut?.id || null });
+  }, [previewCheckOut, form]);
 
   const checkOut = useCheckOut({
     onSuccess: (data) => {
@@ -66,133 +55,114 @@ const CheckOut = () => {
       form.resetFields();
     },
     onError: (err) => {
-      modal.error({ title: "ERROR", content: err?.message || "Check-in gagal" });
-      form.resetFields();
+      modal.error({ title: "ERROR", content: err?.message || "Check-out gagal" });
     },
   });
 
+  const handlePay = () => {
+    if (previewCheckOut?.id && !checkOut.isPending) {
+      checkOut.mutate({ plateNumber: debouncedPlate, voucherId: debouncedVoucher || null });
+    }
+  };
+
+  const handleReset = () => {
+    form.resetFields();
+  };
+  
+  useHotkeys([
+    ['F5', handleReset],
+    ['F10', () => voucherInputRef.current?.focus()],
+    ['F12', handlePay],
+  ], [previewCheckOut, checkOut.isPending, debouncedPlate, debouncedVoucher]);
+
+
+  const descriptionItems = [
+    { key: '1', label: 'Jenis Parkir', children: isMember ? "Member" : "Reguler" },
+    { key: '2', label: 'Nama Member', children: member?.name ?? "-" },
+    { key: '3', label: 'Member Expired', children: formatDateIndo(member?.memberExpiredDate) ?? "-" },
+    { key: '4', label: 'Waktu Masuk', children: previewCheckOut ? formatDateIndo(previewCheckOut.checkInAt) : "-" },
+    { key: '5', label: 'Waktu Keluar', children: previewCheckOut ? formatDateIndo(new Date()) : "-" },
+    { key: '6', label: 'Durasi', children: previewCheckOut ? formatDuration(previewCheckOut.durationMinutes) : "-" },
+  ];
+
   return (
-    <div 
-      // style={{ padding: 40, backgroundColor: '#f0f2f5', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}
-    >
-      {/* <Title level={4}>Check Out</Title> */}
+    <>
       {contextHolder}
+      <Title level={2} style={{ marginBottom: '24px' }}>Check Out Kendaraan</Title>
       <Form form={form} layout="vertical">
-        <h1>Check Out</h1>
-        {/* Main Content: Two Columns */}
-        <Flex gap={30} flex={1}>
-          {/* Sisi Kiri: Kamera & Formulir */}
-          <Flex vertical flex={2}>
-            {/* Bagian Kamera */}
-            <Flex gap={20} style={{ marginBottom: 20 }}>
-              <Flex vertical flex={1} gap={20}>
-                <CameraPlaceholder label="ENTRY CAMERA" />
-                <CameraPlaceholder label="FACE ENTRY CAMERA" />
-              </Flex>
-              <Flex vertical flex={1} gap={20}>
-                <CameraPlaceholder label="EXIT CAMERA" />
-                <CameraPlaceholder label="FACE EXIT CAMERA" />
-              </Flex>
-            </Flex>
-
-            {/* Bagian Formulir yang sudah siap */}
-            <Card style={{ width: '100%' }}>
-              <Form.Item
-                name="plateNumber"
-                label="Plat Nomor"
-                rules={[{ required: true, message: "Plat wajib diisi" }]}
-                getValueFromEvent={(e) => sanitizePlate(e.target.value)}
-              >
-                <Input placeholder="misal: B5432IT" allowClear />
-              </Form.Item>
-              <Form.Item name="vehicleType" label="Jenis Kendaraan (F8)">
-                <Select
-                  defaultValue="mobil"
-                  options={[{ value: 'mobil', label: 'MOBIL (M)' }]}
-                />
-              </Form.Item>
-              <Form.Item name="paymentMethod" label="Metode Pembayaran (F9)">
-                <Select
-                  defaultValue="cash"
-                  options={[{ value: 'cash', label: 'CASH' }]}
-                />
-              </Form.Item>
-              <Form.Item name="ticketId" label="Nomor Parking Slip (F6)">
-                <Input readOnly/>
-              </Form.Item>
-              <Form.Item name="voucherId" label="Kode Voucher (F10)" getValueFromEvent={(e) => sanitizePlate(e.target.value)}>
-                <Input />
-              </Form.Item>
-            </Card>
-          </Flex>
-
-          {/* Sisi Kanan: Informasi & Tombol */}
-          <Card
-            bordered={false}
-            style={{ width: "45%", display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 620 }}
-          >
-            <div>
-              <Text type="secondary"><Clock /></Text>
-              <br />
-              <Text type="secondary">Casby</Text>
-              <Divider />
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <Flex justify="space-between"><Text strong>Sistem Gerbang</Text><Text type="secondary">CASUAL_POS</Text></Flex>
-                <Flex justify="space-between"><Text strong>Jenis Parkir</Text><Text type="secondary">{memberQuery.isFetching ? "Memuat…" : (isMember ? "Member" : "Conventional")}</Text></Flex>
-                <Flex justify="space-between"><Text strong>Member Expired</Text><Text type="secondary">{memberQuery.isFetching ? "Memuat…" : formatDateIndo(member?.memberExpiredDate)}</Text></Flex>
-                <Flex justify="space-between"><Text strong>Nama Member</Text><Text type="secondary">{memberQuery.isFetching ? "Memuat…" : (member?.name ?? "-")}</Text></Flex>
-                <Flex justify="space-between"><Text strong>Unit Member</Text><Text type="secondary">-</Text></Flex>
-                <Flex justify="space-between"><Text strong>Waktu Masuk</Text><Text type="secondary">{previewCheckOut ? formatDateIndo(previewCheckOut.checkInAt) : "-"}</Text></Flex>
-                <Flex justify="space-between"><Text strong>Waktu Keluar</Text><Text type="secondary">{previewCheckOut ? formatDateIndo(previewCheckOut.checkOutAt) : "-"}</Text></Flex>
-                <Flex justify="space-between"><Text strong>Sesi</Text><Text type="secondary">{previewCheckOut
-                  ? `${previewCheckOut.durationMinutes} minutes` : "0 minutes"}</Text></Flex>
-                <Flex justify="space-between"><Text strong>Diskon</Text><Text type="secondary">{previewCheckOut
-                  ? `Rp ${Number(previewCheckOut.discount ?? 0).toLocaleString("id-ID")}`
-                  : "Rp 0,00"}</Text></Flex>
-                <Flex justify="space-between"><Text strong>Promo</Text><Text type="secondary">Rp 0,00</Text></Flex>
-              </Space>
-            </div>
-
-            <div style={{ textAlign: 'center' }}>
-              <Title level={2} style={{ margin: '10px 0' }}>Total Price <Text type="secondary" style={{ fontSize: 20 }}>{previewCheckOut
-                ? `Rp ${Number(previewCheckOut.totalPrice ?? 0).toLocaleString("id-ID")}`
-                : "Rp 0,00"}</Text></Title>
-              <Text type="secondary">{previewCheckOut
-                ? formatDuration(previewCheckOut.durationMinutes)
-                : "0 days 0 hours 0 minutes"}</Text>
-              </div>
-
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <Button
-                type="primary"
-                danger
-                style={{ width: "100%", height: 50 }}
-                disabled={previewCheckOut?.id == null}
-                onClick={() =>
-                  checkOut.mutate({
-                    plateNumber: debouncedPlate,
-                    voucherId: debouncedVoucher || null,
-                  })
-                }
-              >
-                Pay for{" "}
-                {previewCheckOut
-                  ? `Rp ${Number(
-                      (previewCheckOut.totalPrice ?? 0)
-                    ).toLocaleString("id-ID")}`
-                  : "Rp 0,00"}
-              </Button>
-              <Link
-                style={{ display: 'block', textAlign: 'center', marginTop: 10 }}
-                icon={<ReloadOutlined />}
-              >
-                Atur Ulang Halaman (F5)
-              </Link>
+        <Row gutter={[24, 24]}>
+          {/* Kolom Kiri */}
+          <Col xs={24} lg={12}>
+            <Space direction="vertical" size="large" style={{ width: '100%' }}>
+              <Card title="Visual Kendaraan">
+                <Row gutter={[16, 16]}>
+                  <Col span={12}><CameraPlaceholder label="ENTRY CAMERA" /></Col>
+                  <Col span={12}><CameraPlaceholder label="EXIT CAMERA" /></Col>
+                  <Col span={12}><CameraPlaceholder label="FACE ENTRY CAMERA" /></Col>
+                  <Col span={12}><CameraPlaceholder label="FACE EXIT CAMERA" /></Col>
+                </Row>
+              </Card>
+              <Card title="Formulir Checkout">
+                <Form.Item name="plateNumber" label="Plat Nomor" rules={[{ required: true }]} getValueFromEvent={(e) => sanitizePlate(e.target.value)}>
+                  <Input placeholder="B1234XYZ" size="large" autoFocus />
+                </Form.Item>
+                <Form.Item name="ticketId" label="Nomor Parking Slip (F6)">
+                  <Input readOnly size="large" />
+                </Form.Item>
+                <Form.Item name="voucherId" label="Kode Voucher (F10)" getValueFromEvent={(e) => sanitizePlate(e.target.value)}>
+                  <Input ref={voucherInputRef} placeholder="Masukkan kode voucher" size="large" />
+                </Form.Item>
+              </Card>
             </Space>
-          </Card>
-        </Flex>
+          </Col>
+
+          {/* Kolom Kanan */}
+          <Col xs={24} lg={12}>
+            <Space direction="vertical" size="large" style={{ width: '100%' }}>
+              <Card title="Detail Informasi" loading={previewCheckOutQuery.isLoading || memberQuery.isFetching}>
+                <Descriptions items={descriptionItems} column={1} bordered size="small" />
+              </Card>
+
+              <Card title="Kalkulasi Biaya">
+                <Statistic
+                  title="Total Pembayaran"
+                  value={previewCheckOut?.totalPrice ?? 0}
+                  precision={0}
+                  valueStyle={{ color: '#cf1322', fontSize: '2.5rem' }}
+                  prefix="Rp"
+                  loading={previewCheckOutQuery.isLoading}
+                />
+                <Divider />
+                <Descriptions column={1} size="small">
+                    <Descriptions.Item label="Tarif Parkir">{`Rp ${Number(previewCheckOut?.basePrice ?? 0).toLocaleString("id-ID")}`}</Descriptions.Item>
+                    <Descriptions.Item label="Diskon">{`Rp ${Number(previewCheckOut?.discount ?? 0).toLocaleString("id-ID")}`}</Descriptions.Item>
+                </Descriptions>
+              </Card>
+
+              <Card title="Aksi">
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <Button
+                    type="primary"
+                    danger
+                    block
+                    size="large"
+                    style={{ height: 'auto', padding: '10px 0' }}
+                    disabled={!previewCheckOut?.id || checkOut.isPending}
+                    loading={checkOut.isPending}
+                    onClick={handlePay}
+                  >
+                    <span style={{ fontSize: '1.2rem' }}>Bayar & Buka Portal (F12)</span>
+                  </Button>
+                  <Button block icon={<ReloadOutlined />} onClick={handleReset}>
+                    Atur Ulang (F5)
+                  </Button>
+                </Space>
+              </Card>
+            </Space>
+          </Col>
+        </Row>
       </Form>
-    </div>
+    </>
   );
 };
 
